@@ -1,6 +1,5 @@
 // backend/src/Counter.ts
 import db from "./firebase-admin";
-
 export default class Counter {
   private static instance: Counter;
   private countRef = db.ref("count");
