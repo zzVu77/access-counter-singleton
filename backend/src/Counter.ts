@@ -1,29 +1,52 @@
 // backend/src/Counter.ts
+import db from "./firebase-admin";
+
 export default class Counter {
   private static instance: Counter;
-  private count: number = 0;
+  private countRef = db.ref("count");
 
-  private constructor() {}
+  private constructor() {
+    console.log("Counter instance created!");
+  }
 
   public static getInstance(): Counter {
     if (!Counter.instance) {
       Counter.instance = new Counter();
-      console.log("Singleton instance created!");
     }
     return Counter.instance;
   }
 
-  public increment(): void {
-    this.count++;
-  }
-
-  public decrement(): void {
-    if (this.count > 0) {
-      this.count--;
+  public async increment(): Promise<void> {
+    try {
+      const snapshot = await this.countRef.once("value");
+      const currentCount = snapshot.val() || 0;
+      await this.countRef.set(currentCount + 1);
+    } catch (error) {
+      console.error("Error incrementing count:", error);
+      throw error;
     }
   }
 
-  public getCount(): number {
-    return this.count;
+  public async decrement(): Promise<void> {
+    try {
+      const snapshot = await this.countRef.once("value");
+      const currentCount = snapshot.val() || 0;
+      if (currentCount > 0) {
+        await this.countRef.set(currentCount - 1);
+      }
+    } catch (error) {
+      console.error("Error decrementing count:", error);
+      throw error;
+    }
+  }
+
+  public async getCount(): Promise<number> {
+    try {
+      const snapshot = await this.countRef.once("value");
+      return snapshot.val() || 0;
+    } catch (error) {
+      console.error("Error getting count:", error);
+      throw error;
+    }
   }
 }
