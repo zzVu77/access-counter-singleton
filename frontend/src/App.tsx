@@ -1,75 +1,63 @@
 // frontend/src/App.tsx
 import { useEffect, useState } from "react";
-import { db, ref, onValue, off } from "./firebase";
 
 function App() {
   const [count, setCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [connectionId, setConnectionId] = useState<string | null>(null);
 
   useEffect(() => {
-    const countRef = ref(db, "count");
+    // Use sessionStorage to detect page refresh
+    const tabId = sessionStorage.getItem("tabId") || crypto.randomUUID();
+    sessionStorage.setItem("tabId", tabId);
 
-    // Lắng nghe dữ liệu realtime
-    const unsubscribe = onValue(
-      countRef,
-      (snapshot) => {
-        try {
-          const data = snapshot.val();
-          console.log("Realtime data from Firebase:", data);
-          setCount(data !== null ? data : 0);
-          setIsLoading(false);
-        } catch (err) {
-          console.error("Error processing data:", err);
-          setError("Failed to load visitor count");
-          setIsLoading(false);
+    const socket = new WebSocket("ws://localhost:3001");
+
+    socket.onopen = () => {
+      console.log("WebSocket connected");
+      setIsLoading(false);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.connectionId) {
+          setConnectionId(data.connectionId);
         }
-      },
-      (error) => {
-        console.error("Firebase error:", error);
-        setError("Failed to connect to database");
-        setIsLoading(false);
+        if (typeof data.count === "number") {
+          setCount(data.count);
+        }
+      } catch (err) {
+        console.error("Error processing data:", err);
+        setError("Failed to process data");
       }
-    );
+    };
 
-    // Tăng count khi trang được tải
-    fetch("http://localhost:3001/api/counter", { method: "GET" })
-      .then((res) => res.json())
-      .catch((err) => console.error("Error incrementing count:", err));
+    socket.onerror = () => {
+      console.error("WebSocket connection failed");
+      setError("Failed to connect to server");
+      setIsLoading(false);
+    };
 
-    // Giảm count khi trang bị đóng
+    // Handle beforeunload to detect tab closing
     const handleBeforeUnload = () => {
-      fetch("http://localhost:3001/api/counter/decrement", {
-        method: "GET",
-        keepalive: true, // Đảm bảo request được gửi ngay cả khi trang đóng
-      }).catch((err) => console.error("Error decrementing count:", err));
+      // Only send close message if this is not a refresh
+      if (performance.navigation.type !== PerformanceNavigation.TYPE_RELOAD) {
+        socket.close();
+      }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
 
-    // Cleanup
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      off(countRef); // Hủy listener
-      unsubscribe(); // Hủy subscription
+      socket.close();
     };
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="bg-gray-100 h-screen flex items-center justify-center">
-        <p className="text-gray-600 font-mono">Loading...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-gray-100 h-screen flex items-center justify-center">
-        <p className="text-red-600 font-mono">{error}</p>
-      </div>
-    );
-  }
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>{error}</div>;
 
   return (
     <div className="bg-gray-100 h-screen flex items-center justify-center">
